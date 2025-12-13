@@ -1,13 +1,18 @@
 import os
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
 
-# Get token from environment (SAFE)
 TOKEN = os.getenv("TOKEN")
-
 DATA_FILE = "users.txt"
 
-def start(update, context):
-    update.message.reply_text(
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
         "👋 Welcome!\n\n"
         "Commands:\n"
         "/add - Add username\n"
@@ -15,38 +20,41 @@ def start(update, context):
         "/delete - Delete username"
     )
 
-def add(update, context):
-    update.message.reply_text("✍️ Send username to save:")
-    context.user_data['mode'] = 'add'
+async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["mode"] = "add"
+    await update.message.reply_text("✍️ Send username to save:")
 
-def view(update, context):
+async def view(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not os.path.exists(DATA_FILE):
-        update.message.reply_text("📂 No data found.")
+        await update.message.reply_text("📂 No data found.")
         return
 
     with open(DATA_FILE, "r") as f:
         data = f.read()
 
-    update.message.reply_text(
+    await update.message.reply_text(
         "📋 Saved Usernames:\n\n" + (data if data else "Empty")
     )
 
-def delete(update, context):
-    update.message.reply_text("❌ Send username to delete:")
-    context.user_data['mode'] = 'delete'
+async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["mode"] = "delete"
+    await update.message.reply_text("❌ Send username to delete:")
 
-def text_handler(update, context):
+async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-    mode = context.user_data.get('mode')
+    mode = context.user_data.get("mode")
 
-    if mode == 'add':
+    if not mode:
+        return
+
+    if mode == "add":
         with open(DATA_FILE, "a") as f:
             f.write(text + "\n")
-        update.message.reply_text(f"✅ Saved: {text}")
+        await update.message.reply_text(f"✅ Saved: {text}")
 
-    elif mode == 'delete':
+    elif mode == "delete":
         if not os.path.exists(DATA_FILE):
-            update.message.reply_text("⚠️ No file found.")
+            await update.message.reply_text("⚠️ No file found.")
             return
 
         with open(DATA_FILE, "r") as f:
@@ -57,22 +65,21 @@ def text_handler(update, context):
                 if line.strip() != text:
                     f.write(line)
 
-        update.message.reply_text(f"🗑 Deleted: {text}")
+        await update.message.reply_text(f"🗑 Deleted: {text}")
 
-    context.user_data['mode'] = None
+    context.user_data["mode"] = None
 
 def main():
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
+    app = ApplicationBuilder().token(TOKEN).build()
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("add", add))
-    dp.add_handler(CommandHandler("view", view))
-    dp.add_handler(CommandHandler("delete", delete))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, text_handler))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("add", add))
+    app.add_handler(CommandHandler("view", view))
+    app.add_handler(CommandHandler("delete", delete))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    updater.start_polling()
-    updater.idle()
+    print("Bot is running...")
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
