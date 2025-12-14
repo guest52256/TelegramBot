@@ -8,7 +8,7 @@ from telegram.ext import (
     filters
 )
 
-TOKEN = "PASTE_YOUR_BOT_TOKEN_HERE"
+TOKEN = "7833277818:AAGKzbWytWcjuikEfXGGWlvK1NMPqJovIUs"
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
