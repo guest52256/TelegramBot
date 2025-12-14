@@ -1,30 +1,43 @@
 import json
+import os
 import gspread
 from datetime import datetime
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram import (
+    Update,
+    ReplyKeyboardMarkup,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup
+)
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    filters
+)
 from google.oauth2.service_account import Credentials
-import os
 
-# ===== BOT CONFIG =====
-TOKEN = os.environ.get("TOKEN")  # Render ENV
-ADMIN_ID = 7365077848   # اپنا Telegram ID
+# ================= CONFIG =================
+TOKEN = os.environ.get("TOKEN")
+ADMIN_ID = 7365077848   # 🔴 اپنا Telegram ID یہاں لگائیں
+SHEET_NAME = "telegram_users"
 
-# ===== GOOGLE SHEET =====
+# ================= GOOGLE SHEET =================
 def get_sheet():
     creds_dict = json.loads(os.environ["CREDS"])
     creds = Credentials.from_service_account_info(
         creds_dict,
         scopes=[
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
     )
     client = gspread.authorize(creds)
-    return client.open("telegram_users").sheet1
+    return client.open(SHEET_NAME).sheet1
 
 def user_exists(sheet, user_id):
-    ids = sheet.col_values(3)  # 3rd column = User ID
+    ids = sheet.col_values(3)  # User ID column
     return str(user_id) in ids
 
 def save_user(user):
@@ -35,64 +48,94 @@ def save_user(user):
         user.full_name,
         f"@{user.username}" if user.username else "N/A",
         user.id,
-        datetime.now().strftime("%Y-%m-%d %H:%M")
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     ])
 
-# ===== KEYBOARD =====
-keyboard = ReplyKeyboardMarkup(
+# ================= KEYBOARDS =================
+reply_keyboard = ReplyKeyboardMarkup(
     [["📄 View Users"]],
     resize_keyboard=True
 )
 
-# ===== START COMMAND =====
+def inline_buttons():
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("📅 Show Date", callback_data="show_date"),
+                InlineKeyboardButton("⏰ Show Time", callback_data="show_time")
+            ]
+        ]
+    )
+
+# ================= START =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     save_user(user)
 
     now = datetime.now()
-    date_str = now.strftime("%Y-%m-%d")
-    time_str = now.strftime("%H:%M:%S")
-    day_str = now.strftime("%A")
 
-    message = (
-        f"✅ آپ register ہو گئے ہیں\n\n"
+    text = (
+        "✅ You are registered\n\n"
         f"👤 Name: {user.full_name}\n"
         f"🔹 Username: @{user.username if user.username else 'N/A'}\n"
         f"🆔 User ID: {user.id}\n"
-        f"📅 Date: {date_str}\n"
-        f"⏰ Time: {time_str}\n"
-        f"📆 Day: {day_str}"
+        f"📆 Day: {now.strftime('%A')}"
     )
 
-    await update.message.reply_text(message, reply_markup=keyboard)
+    await update.message.reply_text(
+        text,
+        reply_markup=inline_buttons()
+    )
 
-# ===== ADMIN VIEW =====
+# ================= INLINE BUTTON HANDLER =================
+async def inline_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    now = datetime.now()
+
+    if query.data == "show_date":
+        await query.message.reply_text(
+            f"📅 Current Date:\n{now.strftime('%Y-%m-%d')}"
+        )
+
+    elif query.data == "show_time":
+        await query.message.reply_text(
+            f"⏰ Current Time:\n{now.strftime('%H:%M:%S')}"
+        )
+
+# ================= ADMIN VIEW =================
 async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Access denied")
         return
 
     sheet = get_sheet()
-    rows = sheet.get_all_values()[1:]  # skip headers
+    rows = sheet.get_all_values()[1:]  # skip header
 
     if not rows:
-        await update.message.reply_text("کوئی data نہیں")
+        await update.message.reply_text("No users found")
         return
 
     text = "📄 Registered Users:\n\n"
     for r in rows:
-        text += f"👤 {r[0]}\n"
-        text += f"🔹 {r[1]}\n"
-        text += f"🆔 {r[2]}\n"
-        text += f"📅 Registered: {r[3]}\n\n"
+        text += (
+            f"👤 {r[0]}\n"
+            f"🔹 {r[1]}\n"
+            f"🆔 {r[2]}\n"
+            f"📅 {r[3]}\n\n"
+        )
 
-    await update.message.reply_text(text[:4000])  # Telegram limit
+    await update.message.reply_text(text[:4000])
 
-# ===== MAIN =====
+# ================= MAIN =================
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(inline_handler))
     app.add_handler(MessageHandler(filters.Regex("📄 View Users"), view_users))
+
     app.run_polling()
 
 if __name__ == "__main__":
